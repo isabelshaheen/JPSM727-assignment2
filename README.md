@@ -1,12 +1,7 @@
 # JPSM727-assignment2
 
-I have broken up the assignment into 4 qmd files: 
+I created the qmd file in my local computer and then uploaded it to the remote repository. 
 
-1. Pulling from APIs - crime & loans
-2. Pulling from APIs - covid keywords
-3. Google Trends - crime & loans + Illinois ACS
-4. Google Trends - covid keywords + Maryland ACS
+The Git functionality in Rstudio wasn't working properly so I need to troubleshoot my file setup process. 
 
-I then combined all qmd files into 1 qmd file called "Assignment 2 results"
-
-This is the file I tried to render to PDF, but the Census API site has been down for the past 2 hrs so I am unable to render the file. 
+I re-ran the code and rendered again after I had already written my responses, so some of the numbers written in the paragraphs do not match exactly the numbers in the tables because the data was updated more recently through Google Trends. But the overall trends (significant correlation or not) and magnitude (one keyword has 2x the hits of the other) remain true for all the answers. 
