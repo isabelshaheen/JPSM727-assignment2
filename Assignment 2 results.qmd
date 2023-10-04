@@ -1,13 +1,16 @@
 ---
-title: "Assignment 2 results"
-format: html
+title: "Assignment 2 Results"
+subtitle: Isabel O'Malley, JPSM727, Oct 3rd 2023
+format: pdf
 editor: visual
 ---
 
 Link to github repo: <https://github.com/isabelshaheen/JPSM727-assignment2.git>
 
+**Load packages**
+
 ```{r}
-#| message = FALSE
+#| results: "hide"
 library(tidyverse)
 library(gtrendsR)
 library(censusapi)
@@ -32,21 +35,24 @@ Answer the following questions for the keywords "crime" and "loans".
 First, we transform the `data.frame` into a `tibble`.
 
 ```{r}
+#| echo: TRUE
 res_time <- as_tibble(res$interest_over_time)
 glimpse(res_time)
 ```
 
-Then, we use the group_by function and we find mean, SD, median, and variance of hits for the two keywords.
+Then, we use the group_by function and we find mean, SD, median, and variance of hits for the two keywords. We output the data frame as a table using the kable option.
 
 ```{r}
-res_time %>%
+
+summary_hits <- res_time %>%
   group_by(keyword) %>%
   summarize(mean_hits = mean(hits),
             sd_hits = sd(hits),
-            median_hits = median(hits),
-            var_hits = var(hits))
+            median_hits = median(hits))
 
-group_by(res_time, keyword)
+knitr:: kable(summary_hits,
+               caption = "Mean, median, and variance of the search hits for the keywords")
+
 ```
 
 -   **Which cities (locations) have the highest search frequency for `loans`?** Note that there might be multiple rows for each city if there were hits for both "crime" and "loans" in that city. It might be easier to answer this question if we had the search hits info for both search terms in two separate variables. That is, each row would represent a unique city.
@@ -77,24 +83,11 @@ Pivot wider to split the hits column into two variables: one for crime and one f
 res_city_w <- pivot_wider(res_city, 
                           names_from = keyword, 
                           values_from = hits)
-res_city_w
 ```
 
-Plot the search hits for each keyword by city, using res_city_w
+Arrange in descending order for loans and make a table with the top 10
 
 ```{r}
-#| eval: false
-
-library(ggplot2)
-ggplot (res_city_w, aes(x = location, y = loans)) + 
-  geom_bar(stat = "identity", fill = "blue") +
-  labs(title = "Search hits for loan by city", x = 'city', y = 'hits')
-```
-
-Plot only the 10 observations with the highest \# of hits on loans
-
-```{r}
-#| echo: true 
 
 # Arrange the dataframe in descending order of the loans variable
 res_city_w <- res_city_w %>%
@@ -102,7 +95,16 @@ res_city_w <- res_city_w %>%
 
 # Select the top 10 observations
 top_10 <- head(res_city_w, 10)
-top_10
+
+# Use kable to create a table
+knitr:: kable(top_10,
+               caption = "10 cities with the highest search frequency for loans")
+```
+
+Plot only the 10 observations with the highest \# of hits on loans
+
+```{r}
+#| echo: true 
 
 # Create a bar plot using ggplot2
 ggplot(data = top_10, aes(x = reorder(location, -loans), y = loans)) +
@@ -117,8 +119,6 @@ ggplot(data = top_10, aes(x = reorder(location, -loans), y = loans)) +
 Convert NAs to 0
 
 ```{r}
-#| echo: false
-#| results: hide 
 
 res_city_w <- res_city_w %>%
   mutate_all(~ifelse(is.na(.), 0, .))
@@ -128,14 +128,13 @@ res_city_w <- res_city_w %>%
 Find the correlation between crime and loans hits
 
 ```{r}
-#| echo: true
 
 cor_test_result <- cor.test(res_city_w$crime, res_city_w$loans)
 
 cor_test_result
 ```
 
-Answer: The p-value is \< .001 and the t-value is -4.23 indicating a significant negative correlation between the number of google searches for "crime" and the number of searches for "loans" in Illinois in 2020.
+Answer: The p-value is \< .001 and the t-value is -4.23 indicating a significant negative correlation between the number of google searches for "crime" and the number of searches for "loans" in Illinois in 2020. In other words, when searches for crime are high, searches for loans tend to be lower, and vice versa. This is consistent with the graph from google trends.
 
 # Google Trends - Crime and Loans + Illinois ACS
 
@@ -152,7 +151,7 @@ cs_key <- "410ea52de7d0c298684fa54e92f6118f47a4aec9"
 In the following, we request basic socio-demographic information (population, median age, median household income, income per capita) **for cities and villages in the state of Illinois.**
 
 ```{r}
-
+#| results: "hide"
 acs_il <- getCensus(name = "acs/acs5",
                     vintage = 2020, 
                     vars = c("NAME", 
@@ -225,7 +224,7 @@ Inspect the result.
 
 ```{r}
 
-res_join
+str(res_join)
 ```
 
 -   Compute the mean of the search popularity for both keywords for cities that have an above average median household income and for those that have a below average median household income. When building your pipe, start with creating the grouping variable and then proceed with the remaining tasks. What conclusions might you draw from this?
@@ -236,12 +235,14 @@ res_join
 median_hh_income <- median(res_join$hh_income)
 
 #Group by above or below median household income and calculate mean for each keyword
-res_join %>%
+summary_res_join <- res_join %>%
   mutate(hh_income_above_median = hh_income > median_hh_income) %>%
   group_by(hh_income_above_median) %>%
   summarise(mean_crime = mean(crime, na.rm = T), 
             mean_loans = mean(loans, na.rm = T))
 
+knitr:: kable(summary_res_join,
+               caption = "Average search popularity for keywords in cities by average household income")
 ```
 
 Answer: For the cities with average household income below the state's median, the search term "loans" is twice as popular as the search term "crime." (21 v. 10) For cities with average household income above the state's median, the search terms "crime" and "loans" are equally as popular (both are 15).
@@ -306,14 +307,15 @@ glimpse(res_time)
 Then, we use the group_by function and we find mean, SD, median, and max hits for the two keywords.
 
 ```{r}
-res_time %>%
+summary_hits <- res_time %>%
   group_by(keyword) %>%
   summarize(mean_hits = mean(hits),
             sd_hits = sd(hits),
             median_hits = median(hits),
             max_hits = max(hits))
 
-group_by(res_time, keyword)
+knitr:: kable(summary_hits,
+               caption = "Mean, median, and variance of the search hits for the keywords")
 ```
 
 -   **Which cities (locations) have the highest search frequency for each keyword?** Note that there might be multiple rows for each city if there were hits for both keywords in that city. It might be easier to answer this question if we had the search hits info for both keywords in two separate variables. That is, each row would represent a unique city.
@@ -326,7 +328,6 @@ Pivot wider res_time to split the hits column into two variables
 res_time_w <- pivot_wider(res_time, 
                           names_from = keyword, 
                           values_from = hits)
-res_time_w
 ```
 
 Make res\$interest_by_city into a tibble and shorten name to res_city
@@ -353,21 +354,21 @@ unique_res_city <- res_city %>%
 res_city_w <- pivot_wider(unique_res_city, 
                           names_from = keyword, 
                           values_from = hits)
-res_city_w
 
 ```
 
 Let's find the cities with the highest numbers of hits for our keywords using `dplyr`s `arrange()` function.
 
 ```{r}
+#| results: "hide"
 res_city_w %>%
   select(location, cdc) %>%
   arrange(desc(cdc))
+  
+cdc_top10 <- head(res_city_w, 10)
 
-res_city_w %>%
-  select(location, tiktok) %>%
-  arrange(desc(tiktok))
-
+knitr:: kable(cdc_top10,
+               caption = "Cities with highest numbers of hits for CDC")
 ```
 
 -   Is there a relationship between the search intensities between the two keywords we used?
@@ -390,7 +391,7 @@ cor_test_result <- cor.test(res_city_w$cdc, res_city_w$tiktok)
 cor_test_result
 ```
 
-Answer: The p-value is .4224 indicating there is no significant correlation between the number of google searches for "CDC" and the number of searches for "tiktok" in Maryland from 2019-2023.
+Answer: The p-value is .4224 indicating there is no significant correlation between the number of google searches for "CDC" and the number of searches for "tiktok" in Maryland from 2019-2023. This is consistent with the google trends graph, where CDC hits spike around covid-19 disease incidence rises, and tiktok spokes are more aligned with the
 
 # Google Trends (covid keywords) + Maryland ACS
 
@@ -455,7 +456,7 @@ no_CDP <- gsub(' CDP, Maryland', '', no_town)
 acs_with_location <- acs_md %>% 
   mutate(location = no_CDP)
 
-acs_with_location
+head(acs_with_location)
 ```
 
 The following questions are answered with the Maryland "cdc" and "tiktok" Google trends data and the ACS data.
@@ -485,7 +486,7 @@ Inspect the result.
 
 ```{r}
 
-res_join
+head(res_join)
 ```
 
 -   Compute the mean of the search popularity for both keywords for cities that have an above average median household income and for those that have a below average median household income. When building your pipe, start with creating the grouping variable and then proceed with the remaining tasks. What conclusions might you draw from this?
@@ -519,7 +520,7 @@ cor_income_cdc
 cor_income_tiktok
 ```
 
-Answer: There is a significant positive relationship (p \< .001, t = 6.39, CI: .28, .51) between a city's average household income and searches for cdc. There is no significant relationship (p = .67, t = -.42, CI: -.16, .10) between a city's average household income and searches for tiktok.
+Answer: There is a significant positive relationship (p \< .001, t = 6.39, CI: .28, .51) between a city's average household income and searches for cdc. This seems consistent with the graph, where at higher income levels it appears that the number of hits for CDC are slightly higher. There is no significant relationship (p = .67, t = -.42, CI: -.16, .10) between a city's average household income and searches for tiktok. This also seems consistent with the graph for tiktok, where no clear income trend emerges from the data points.
 
 Household income and searches for cdc
 
