@@ -1,0 +1,135 @@
+---
+title: "Pulling from APIs - covid keywords"
+subtitle: "Due at 11:59pm on October 3."
+format: pdf
+editor: visual
+---
+
+### LINK to GITHUB REPO
+
+```{r}
+#| message = FALSE
+library(tidyverse)
+library(gtrendsR)
+library(censusapi)
+```
+
+## Pulling from APIs
+
+Our first data source is the Google Trends API. Suppose we are interested in the search trends for `CDC` and `Tiktok` in Maryland in the years 2019-2023. We could find this using the following code:
+
+```{r}
+res <- gtrends(c("cdc", "tiktok"), 
+               geo = "US-MD", 
+               time = "2019-01-01 2023-9-30", 
+               low_search_volume = TRUE)
+plot(res)
+```
+
+Answer the following questions for the keywords.
+
+-   Find the mean, median and variance of the search hits for the keywords.
+
+First, we transform the `data.frame` into a `tibble`.
+
+```{r}
+res_time <- as_tibble(res$interest_over_time)
+glimpse(res_time)
+```
+
+Then, we use the group_by function and we find mean, SD, median, and max hits for the two keywords.
+
+```{r}
+res_time %>%
+  group_by(keyword) %>%
+  summarize(mean_hits = mean(hits),
+            sd_hits = sd(hits),
+            median_hits = median(hits),
+            max_hits = max(hits))
+
+group_by(res_time, keyword)
+```
+
+-   **Which cities (locations) have the highest search frequency for each keyword?** Note that there might be multiple rows for each city if there were hits for both keywords in that city. It might be easier to answer this question if we had the search hits info for both keywords in two separate variables. That is, each row would represent a unique city.
+
+Pivot wider res_time to split the hits column into two variables
+
+```{r}
+#| echo: false
+#| results: hide 
+
+
+#pivot wider
+res_time_w <- pivot_wider(res_time, 
+                          names_from = keyword, 
+                          values_from = hits)
+res_time_w
+```
+
+Make res\$interest_by_city into a tibble and shorten name to res_city
+
+```{r}
+#| echo: false
+#| results: hide 
+res_city <- as_tibble(res$interest_by_city)
+glimpse(res_city)
+```
+
+Pivot wider with res_city
+
+```{r}
+#identify duplicates 
+duplicates <- res_city %>%
+  dplyr::group_by(location, geo, gprop, keyword) %>%
+  dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+  dplyr::filter(n > 1L)
+
+#remove duplicates
+unique_res_city <- res_city %>%
+  anti_join(duplicates, by = c("location", "geo", "gprop", "keyword"))
+
+#pivot wider 
+res_city_w <- pivot_wider(unique_res_city, 
+                          names_from = keyword, 
+                          values_from = hits)
+res_city_w
+
+```
+
+Let's find the cities with the highest numbers of hits for our keywords using `dplyr`s `arrange()` function.
+
+```{r}
+res_city_w %>%
+  select(location, cdc) %>%
+  arrange(desc(cdc))
+
+res_city_w %>%
+  select(location, tiktok) %>%
+  arrange(desc(tiktok))
+
+```
+
+-   Is there a relationship between the search intensities between the two keywords we used?
+
+Convert NAs to 0
+
+```{r}
+#| echo: false
+#| results: hide 
+
+res_city_w <- res_city_w %>%
+  mutate_all(~ifelse(is.na(.), 0, .))
+
+```
+
+Find the correlation between the two keywords
+
+```{r}
+#| echo: true
+
+cor_test_result <- cor.test(res_city_w$cdc, res_city_w$tiktok)
+
+cor_test_result
+```
+
+Answer: The p-value is .4224 indicating there is no significant correlation between the number of google searches for "CDC" and the number of searches for "tiktok" in Maryland from 2019-2023.

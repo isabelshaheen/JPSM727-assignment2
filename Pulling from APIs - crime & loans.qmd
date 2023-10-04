@@ -1,0 +1,151 @@
+---
+title: "Pulling from APIs"
+subtitle: "Due at 11:59pm on October 3."
+format: pdf
+editor: visual
+---
+
+You may work in pairs or individually for this assignment. Make sure you join a group in Canvas if you are working in pairs. Turn in this assignment as an HTML or PDF file to ELMS. Make sure to include the R Markdown or Quarto file that was used to generate it.
+
+\*Note - Respond to questions in paragraph form.
+
+\*"Res" is short for "results", as in the query results
+
+\*For the PDF file - for code to answer a specific question, make sure that code shows up. But if it's code to create a graph or for display purposes, then suppress that in the pdf output. So there isn't code in the middle between the core code needed to answer the question.
+
+### LINK to GITHUB REPO
+
+```{r}
+#| message = FALSE
+library(tidyverse)
+library(gtrendsR)
+library(censusapi)
+```
+
+In this assignment, you will pull from APIs to get data from various data sources and use your data wrangling skills to use them all together. You should turn in a report in PDF or HTML format that addresses all of the questions in this assignment, and describes the data that you pulled and analyzed. You do not need to include full introduction and conclusion sections like a full report, but you should make sure to answer the questions in paragraph form, and include all relevant tables and graphics.
+
+Whenever possible, use piping and `dplyr`. Avoid hard-coding any numbers within the report as much as possible.
+
+## Pulling from APIs
+
+Our first data source is the Google Trends API. Suppose we are interested in the search trends for `crime` and `loans` in Illinois in the year 2020. We could find this using the following code:
+
+```{r}
+res <- gtrends(c("crime", "loans"), 
+               geo = "US-IL", 
+               time = "2020-01-01 2020-12-31", 
+               low_search_volume = TRUE)
+plot(res)
+```
+
+Answer the following questions for the keywords "crime" and "loans".
+
+-   Find the mean, median and variance of the search hits for the keywords.
+
+First, we transform the `data.frame` into a `tibble`.
+
+```{r}
+res_time <- as_tibble(res$interest_over_time)
+glimpse(res_time)
+```
+
+Then, we use the group_by function and we find mean, SD, median, and variance of hits for the two keywords.
+
+```{r}
+res_time %>%
+  group_by(keyword) %>%
+  summarize(mean_hits = mean(hits),
+            sd_hits = sd(hits),
+            median_hits = median(hits),
+            var_hits = var(hits))
+
+group_by(res_time, keyword)
+```
+
+-   **Which cities (locations) have the highest search frequency for `loans`?** Note that there might be multiple rows for each city if there were hits for both "crime" and "loans" in that city. It might be easier to answer this question if we had the search hits info for both search terms in two separate variables. That is, each row would represent a unique city.
+
+Note that the original results object `res` contains some additional information, such as the search interest by city/ region.
+
+```{r}
+#| eval: false
+
+res$interest_by_city
+```
+
+Make res\$interest_by_city into a tibble and shorten name to res_city
+
+```{r}
+#| echo: false
+#| results: hide 
+res_city <- as_tibble(res$interest_by_city)
+glimpse(res_city)
+```
+
+Pivot wider to split the hits column into two variables: one for crime and one for loans
+
+```{r}
+#| echo: false
+#| results: hide 
+
+res_city_w <- pivot_wider(res_city, 
+                          names_from = keyword, 
+                          values_from = hits)
+res_city_w
+```
+
+Plot the search hits for each keyword by city, using res_city_w
+
+```{r}
+#| eval: false
+
+library(ggplot2)
+ggplot (res_city_w, aes(x = location, y = loans)) + 
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Search hits for loan by city", x = 'city', y = 'hits')
+```
+
+Plot only the 10 observations with the highest \# of hits on loans
+
+```{r}
+#| echo: true 
+
+# Arrange the dataframe in descending order of the loans variable
+res_city_w <- res_city_w %>%
+  arrange(desc(loans))
+
+# Select the top 10 observations
+top_10 <- head(res_city_w, 10)
+top_10
+
+# Create a bar plot using ggplot2
+ggplot(data = top_10, aes(x = reorder(location, -loans), y = loans)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Illinois cities with the most google search hits for 'loans' in 2020", x = "Cities", y = "Search hits for 'loans'(normalized)")
+
+
+```
+
+-   Is there a relationship between the search intensities between the two keywords we used?
+
+Convert NAs to 0
+
+```{r}
+#| echo: false
+#| results: hide 
+
+res_city_w <- res_city_w %>%
+  mutate_all(~ifelse(is.na(.), 0, .))
+
+```
+
+Find the correlation between crime and loans hits
+
+```{r}
+#| echo: true
+
+cor_test_result <- cor.test(res_city_w$crime, res_city_w$loans)
+
+cor_test_result
+```
+
+Answer: The p-value is \< .001 and the t-value is -4.23 indicating a significant negative correlation between the number of google searches for "crime" and the number of searches for "loans" in Illinois in 2020.
