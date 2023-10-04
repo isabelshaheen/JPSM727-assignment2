@@ -1,0 +1,153 @@
+---
+title: "Google Trends (covid keywords) + ACS"
+format: html
+editor: visual
+---
+
+Link to github repo: <https://github.com/isabelshaheen/JPSM727-assignment2.git>
+
+## Google Trends (covid keywords) + Maryland ACS
+
+Now lets add another data set. The `censusapi` package provides a nice R interface for communicating with this API. However, before running queries we need an access key. This (easy) process can be completed here:
+
+<https://api.census.gov/data/key_signup.html>
+
+Once you have an access key, store this key in the `cs_key` object. We will use this object in all following API queries.
+
+```{r}
+#| eval: false
+cs_key <- "410ea52de7d0c298684fa54e92f6118f47a4aec9"
+```
+
+In the following, we request basic socio-demographic information (population, median age, median household income, income per capita) **for cities and villages in the state of Maryland.**
+
+```{r}
+
+acs_md <- getCensus(name = "acs/acs5",
+                    vintage = 2020, 
+                    vars = c("NAME", 
+                             "B01001_001E", 
+                             "B06002_001E", 
+                             "B19013_001E", 
+                             "B19301_001E"), 
+                    region = "place:*", 
+                    regionin = "state:24",
+                    key = cs_key)
+head(acs_md)
+```
+
+Convert values that represent missings to NAs.
+
+```{r}
+
+acs_md[acs_md == -666666666] <- NA
+```
+
+Now, it might be useful to rename the socio-demographic variables (`B01001_001E` etc.) in our data set and assign more meaningful names.
+
+```{r}
+acs_md <-
+  acs_md %>%
+  rename(pop = B01001_001E, 
+         age = B06002_001E, 
+         hh_income = B19013_001E, 
+         income = B19301_001E)
+```
+
+It seems like we could try to use this location information listed above to merge this data set with the Google Trends data. However, we first have to clean `NAME` so that it has the same structure as `location` in the search interest by city data.
+
+Add a new variable `location` to the ACS data that only includes city names, without the suffix (village, city, town, or CDP)
+
+```{r}
+no_village <- gsub(' village, Maryland', '', acs_md$NAME)
+no_city <- gsub(' city, Maryland', '', no_village)
+no_town <- gsub(' town, Maryland', '', no_city)
+no_CDP <- gsub(' CDP, Maryland', '', no_town)
+
+acs_with_location <- acs_md %>% 
+  mutate(location = no_CDP)
+
+acs_with_location
+```
+
+The following questions are answered with the Maryland "cdc" and "tiktok" Google trends data and the ACS data.
+
+-   First, check how many cities don't appear in both data sets, i.e. cannot be matched.
+
+```{r}
+locations_only_in_acs <- setdiff(acs_with_location$location, res_city_w$location)
+locations_only_in_res <- setdiff(res_city_w$location, acs_with_location$location)
+
+count_locations_acs <- length(locations_only_in_acs)
+count_locations_res <- length(locations_only_in_res)
+
+cat("Locations unique to acs:", count_locations_acs, "\n")
+cat("Locations unique to res:", count_locations_res, "\n")
+```
+
+-   Then, create a new data set by joining the Google Trends and the ACS data. Keep only cities that appear in both data sets.
+
+```{r}
+
+res_join <- left_join(acs_with_location, res_city_w, by = "location")
+res_join <- na.omit(res_join)
+```
+
+Inspect the result.
+
+```{r}
+
+res_join
+```
+
+-   Compute the mean of the search popularity for both keywords for cities that have an above average median household income and for those that have a below average median household income. When building your pipe, start with creating the grouping variable and then proceed with the remaining tasks. What conclusions might you draw from this?
+
+```{r}
+
+#Calculate median household income
+median_hh_income <- median(res_join$hh_income)
+
+#Group by above or below median household income and calculate mean for each keyword
+res_join %>%
+  mutate(hh_income_above_median = hh_income > median_hh_income) %>%
+  group_by(hh_income_above_median) %>%
+  summarise(mean_cdc = mean(cdc, na.rm = T), 
+            mean_tiktok = mean(tiktok, na.rm = T))
+
+```
+
+Answer: The number of searches for "tiktok" is essentially the same across cities where average household income is below the state median and cities where average household income is above the state median. However, the average number of searches for "cdc" in the richer cities (with household income above the median) is nearly double that of the average number of searches for "cdc" in the poorer cities (with household income below the median). Together, these results suggest that Maryland residents' interest in tiktok was similar across income groups, but interest in the CDC was higher among people in richer neighborhoods than in poorer neighborhoods.
+
+-   Is there a relationship between the median household income and the search popularity of the Google trends terms? Describe the relationship and use a scatterplot with `qplot()`.
+
+Calculate correlation between household income and search popularity of the google trends terms
+
+```{r}
+
+cor_income_cdc <- cor.test(res_join$hh_income, res_join$cdc)
+
+cor_income_tiktok <- cor.test(res_join$hh_income, res_join$tiktok)
+
+cor_income_cdc
+cor_income_tiktok
+```
+
+Answer: There is a significant positive relationship (p \< .001, t = 6.39, CI: .28, .51) between a city's average household income and searches for cdc. There is no significant relationship (p = .67, t = -.42, CI: -.16, .10) between a city's average household income and searches for tiktok.
+
+Plot household income and searches for cdc
+
+```{r}
+
+res_join %>%
+  qplot(x = hh_income, y = cdc, data = ., 
+        geom = "point")
+```
+
+Plot household income and searches for tiktok
+
+```{r}
+
+res_join %>%
+  qplot(x = hh_income, y = tiktok, data = ., 
+        geom = "point")
+```

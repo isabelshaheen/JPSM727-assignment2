@@ -5,15 +5,7 @@ format: pdf
 editor: visual
 ---
 
-You may work in pairs or individually for this assignment. Make sure you join a group in Canvas if you are working in pairs. Turn in this assignment as an HTML or PDF file to ELMS. Make sure to include the R Markdown or Quarto file that was used to generate it.
-
-\*Note - Respond to questions in paragraph form.
-
-\*"Res" is short for "results", as in the query results
-
-\*For the PDF file - for code to answer a specific question, make sure that code shows up. But if it's code to create a graph or for display purposes, then suppress that in the pdf output. So there isn't code in the middle between the core code needed to answer the question.
-
-### LINK to GITHUB REPO
+### Link to github repo: <https://github.com/isabelshaheen/JPSM727-assignment2.git> 
 
 ```{r}
 #| message = FALSE
@@ -21,10 +13,6 @@ library(tidyverse)
 library(gtrendsR)
 library(censusapi)
 ```
-
-In this assignment, you will pull from APIs to get data from various data sources and use your data wrangling skills to use them all together. You should turn in a report in PDF or HTML format that addresses all of the questions in this assignment, and describes the data that you pulled and analyzed. You do not need to include full introduction and conclusion sections like a full report, but you should make sure to answer the questions in paragraph form, and include all relevant tables and graphics.
-
-Whenever possible, use piping and `dplyr`. Avoid hard-coding any numbers within the report as much as possible.
 
 ## Pulling from APIs
 

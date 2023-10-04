@@ -1,0 +1,542 @@
+---
+title: "Assignment 2 results"
+format: html
+editor: visual
+---
+
+Link to github repo: <https://github.com/isabelshaheen/JPSM727-assignment2.git>
+
+```{r}
+#| message = FALSE
+library(tidyverse)
+library(gtrendsR)
+library(censusapi)
+```
+
+# Pulling from APIs - Crime and Loans
+
+Our first data source is the Google Trends API. Suppose we are interested in the search trends for `crime` and `loans` in Illinois in the year 2020. We could find this using the following code:
+
+```{r}
+res <- gtrends(c("crime", "loans"), 
+               geo = "US-IL", 
+               time = "2020-01-01 2020-12-31", 
+               low_search_volume = TRUE)
+plot(res)
+```
+
+Answer the following questions for the keywords "crime" and "loans".
+
+-   Find the mean, median and variance of the search hits for the keywords.
+
+First, we transform the `data.frame` into a `tibble`.
+
+```{r}
+res_time <- as_tibble(res$interest_over_time)
+glimpse(res_time)
+```
+
+Then, we use the group_by function and we find mean, SD, median, and variance of hits for the two keywords.
+
+```{r}
+res_time %>%
+  group_by(keyword) %>%
+  summarize(mean_hits = mean(hits),
+            sd_hits = sd(hits),
+            median_hits = median(hits),
+            var_hits = var(hits))
+
+group_by(res_time, keyword)
+```
+
+-   **Which cities (locations) have the highest search frequency for `loans`?** Note that there might be multiple rows for each city if there were hits for both "crime" and "loans" in that city. It might be easier to answer this question if we had the search hits info for both search terms in two separate variables. That is, each row would represent a unique city.
+
+Note that the original results object `res` contains some additional information, such as the search interest by city/ region.
+
+```{r}
+#| eval: false
+
+res$interest_by_city
+```
+
+Make res\$interest_by_city into a tibble and shorten name to res_city
+
+```{r}
+#| echo: false
+#| results: hide 
+res_city <- as_tibble(res$interest_by_city)
+glimpse(res_city)
+```
+
+Pivot wider to split the hits column into two variables: one for crime and one for loans
+
+```{r}
+#| echo: false
+#| results: hide 
+
+res_city_w <- pivot_wider(res_city, 
+                          names_from = keyword, 
+                          values_from = hits)
+res_city_w
+```
+
+Plot the search hits for each keyword by city, using res_city_w
+
+```{r}
+#| eval: false
+
+library(ggplot2)
+ggplot (res_city_w, aes(x = location, y = loans)) + 
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Search hits for loan by city", x = 'city', y = 'hits')
+```
+
+Plot only the 10 observations with the highest \# of hits on loans
+
+```{r}
+#| echo: true 
+
+# Arrange the dataframe in descending order of the loans variable
+res_city_w <- res_city_w %>%
+  arrange(desc(loans))
+
+# Select the top 10 observations
+top_10 <- head(res_city_w, 10)
+top_10
+
+# Create a bar plot using ggplot2
+ggplot(data = top_10, aes(x = reorder(location, -loans), y = loans)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  labs(title = "Illinois cities with the most google search hits for 'loans' in 2020", x = "Cities", y = "Search hits for 'loans'(normalized)")
+
+
+```
+
+-   Is there a relationship between the search intensities between the two keywords we used?
+
+Convert NAs to 0
+
+```{r}
+#| echo: false
+#| results: hide 
+
+res_city_w <- res_city_w %>%
+  mutate_all(~ifelse(is.na(.), 0, .))
+
+```
+
+Find the correlation between crime and loans hits
+
+```{r}
+#| echo: true
+
+cor_test_result <- cor.test(res_city_w$crime, res_city_w$loans)
+
+cor_test_result
+```
+
+Answer: The p-value is \< .001 and the t-value is -4.23 indicating a significant negative correlation between the number of google searches for "crime" and the number of searches for "loans" in Illinois in 2020.
+
+# Google Trends - Crime and Loans + Illinois ACS
+
+Now lets add another data set. The `censusapi` package provides a nice R interface for communicating with this API. However, before running queries we need an access key. This (easy) process can be completed here:
+
+<https://api.census.gov/data/key_signup.html>
+
+Once you have an access key, store this key in the `cs_key` object. We will use this object in all following API queries.
+
+```{r}
+cs_key <- "410ea52de7d0c298684fa54e92f6118f47a4aec9"
+```
+
+In the following, we request basic socio-demographic information (population, median age, median household income, income per capita) **for cities and villages in the state of Illinois.**
+
+```{r}
+
+acs_il <- getCensus(name = "acs/acs5",
+                    vintage = 2020, 
+                    vars = c("NAME", 
+                             "B01001_001E", 
+                             "B06002_001E", 
+                             "B19013_001E", 
+                             "B19301_001E"), 
+                    region = "place:*", 
+                    regionin = "state:17",
+                    key = cs_key)
+head(acs_il)
+```
+
+Convert values that represent missings to NAs.
+
+```{r}
+
+acs_il[acs_il == -666666666] <- NA
+```
+
+Now, it might be useful to rename the socio-demographic variables (`B01001_001E` etc.) in our data set and assign more meaningful names.
+
+```{r}
+acs_il <-
+  acs_il %>%
+  rename(pop = B01001_001E, 
+         age = B06002_001E, 
+         hh_income = B19013_001E, 
+         income = B19301_001E)
+```
+
+It seems like we could try to use this location information listed above to merge this data set with the Google Trends data. However, we first have to clean `NAME` so that it has the same structure as `location` in the search interest by city data.
+
+Add a new variable `location` to the ACS data that only includes city names.
+
+```{r}
+no_village <- gsub(' village, Illinois', '', acs_il$NAME)
+no_city <- gsub(' city, Illinois', '', no_village)
+
+acs_with_location <- acs_il %>% 
+  mutate(location = no_city)
+
+acs_with_location %>% head(5)
+```
+
+Answer the following questions with the "crime" and "loans" Google trends data and the ACS data.
+
+-   First, check how many cities don't appear in both data sets, i.e. cannot be matched.
+
+```{r}
+locations_only_in_acs <- setdiff(acs_with_location$location, res_city_w$location)
+locations_only_in_res <- setdiff(res_city_w$location, acs_with_location$location)
+
+count_locations_acs <- length(locations_only_in_acs)
+count_locations_res <- length(locations_only_in_res)
+
+cat("Locations unique to acs:", count_locations_acs, "\n")
+cat("Locations unique to res:", count_locations_res, "\n")
+```
+
+-   Then, create a new data set by joining the Google Trends and the ACS data. Keep only cities that appear in both data sets.
+
+```{r}
+
+res_join <- left_join(acs_with_location, res_city_w, by = "location")
+res_join <- na.omit(res_join)
+```
+
+Inspect the result.
+
+```{r}
+
+res_join
+```
+
+-   Compute the mean of the search popularity for both keywords for cities that have an above average median household income and for those that have a below average median household income. When building your pipe, start with creating the grouping variable and then proceed with the remaining tasks. What conclusions might you draw from this?
+
+```{r}
+
+#Calculate median household income
+median_hh_income <- median(res_join$hh_income)
+
+#Group by above or below median household income and calculate mean for each keyword
+res_join %>%
+  mutate(hh_income_above_median = hh_income > median_hh_income) %>%
+  group_by(hh_income_above_median) %>%
+  summarise(mean_crime = mean(crime, na.rm = T), 
+            mean_loans = mean(loans, na.rm = T))
+
+```
+
+Answer: For the cities with average household income below the state's median, the search term "loans" is twice as popular as the search term "crime." (21 v. 10) For cities with average household income above the state's median, the search terms "crime" and "loans" are equally as popular (both are 15).
+
+-   Is there a relationship between the median household income and the search popularity of the Google trends terms? Describe the relationship and use a scatterplot with `qplot()`.
+
+Calculate correlation between household income and search popularity of the google trends terms
+
+```{r}
+
+cor_income_crime <- cor.test(res_join$hh_income, res_join$crime)
+
+cor_income_loans <- cor.test(res_join$hh_income, res_join$loans)
+
+cor_income_crime
+cor_income_loans
+```
+
+Answer: There is a significant positive relationship between a city's household income and searches for crime. There is a significant negative relationship between a city's household income and searches for loans.
+
+Plot household income and searches for loans
+
+```{r}
+
+res_join %>%
+  qplot(x = hh_income, y = loans, data = ., 
+        geom = "point")
+```
+
+Plot household income and searches for crime
+
+```{r}
+
+res_join %>%
+  qplot(x = hh_income, y = crime, data = ., 
+        geom = "point")
+```
+
+# Pulling from APIs - Covid Keywords
+
+Our data source is the Google Trends API. Suppose we are interested in the search trends for `CDC` and `Tiktok` in Maryland in the years 2019-2023. We could find this using the following code:
+
+```{r}
+res <- gtrends(c("cdc", "tiktok"), 
+               geo = "US-MD", 
+               time = "2019-01-01 2023-9-30", 
+               low_search_volume = TRUE)
+plot(res)
+```
+
+Answer the following questions for the keywords.
+
+-   Find the mean, median and variance of the search hits for the keywords.
+
+First, we transform the `data.frame` into a `tibble`.
+
+```{r}
+res_time <- as_tibble(res$interest_over_time)
+glimpse(res_time)
+```
+
+Then, we use the group_by function and we find mean, SD, median, and max hits for the two keywords.
+
+```{r}
+res_time %>%
+  group_by(keyword) %>%
+  summarize(mean_hits = mean(hits),
+            sd_hits = sd(hits),
+            median_hits = median(hits),
+            max_hits = max(hits))
+
+group_by(res_time, keyword)
+```
+
+-   **Which cities (locations) have the highest search frequency for each keyword?** Note that there might be multiple rows for each city if there were hits for both keywords in that city. It might be easier to answer this question if we had the search hits info for both keywords in two separate variables. That is, each row would represent a unique city.
+
+Pivot wider res_time to split the hits column into two variables
+
+```{r}
+
+#pivot wider
+res_time_w <- pivot_wider(res_time, 
+                          names_from = keyword, 
+                          values_from = hits)
+res_time_w
+```
+
+Make res\$interest_by_city into a tibble and shorten name to res_city
+
+```{r}
+res_city <- as_tibble(res$interest_by_city)
+glimpse(res_city)
+```
+
+Pivot wider with res_city
+
+```{r}
+#identify duplicates 
+duplicates <- res_city %>%
+  dplyr::group_by(location, geo, gprop, keyword) %>%
+  dplyr::summarise(n = dplyr::n(), .groups = "drop") %>%
+  dplyr::filter(n > 1L)
+
+#remove duplicates
+unique_res_city <- res_city %>%
+  anti_join(duplicates, by = c("location", "geo", "gprop", "keyword"))
+
+#pivot wider 
+res_city_w <- pivot_wider(unique_res_city, 
+                          names_from = keyword, 
+                          values_from = hits)
+res_city_w
+
+```
+
+Let's find the cities with the highest numbers of hits for our keywords using `dplyr`s `arrange()` function.
+
+```{r}
+res_city_w %>%
+  select(location, cdc) %>%
+  arrange(desc(cdc))
+
+res_city_w %>%
+  select(location, tiktok) %>%
+  arrange(desc(tiktok))
+
+```
+
+-   Is there a relationship between the search intensities between the two keywords we used?
+
+Convert NAs to 0
+
+```{r}
+
+res_city_w <- res_city_w %>%
+  mutate_all(~ifelse(is.na(.), 0, .))
+
+```
+
+Find the correlation between the two keywords
+
+```{r}
+
+cor_test_result <- cor.test(res_city_w$cdc, res_city_w$tiktok)
+
+cor_test_result
+```
+
+Answer: The p-value is .4224 indicating there is no significant correlation between the number of google searches for "CDC" and the number of searches for "tiktok" in Maryland from 2019-2023.
+
+# Google Trends (covid keywords) + Maryland ACS
+
+Now lets add another data set. The `censusapi` package provides a nice R interface for communicating with this API. However, before running queries we need an access key. This (easy) process can be completed here:
+
+<https://api.census.gov/data/key_signup.html>
+
+Once you have an access key, store this key in the `cs_key` object. We will use this object in all following API queries.
+
+```{r}
+#| eval: false
+cs_key <- "410ea52de7d0c298684fa54e92f6118f47a4aec9"
+```
+
+In the following, we request basic socio-demographic information (population, median age, median household income, income per capita) **for cities and villages in the state of Maryland.**
+
+```{r}
+#| echo: false
+#| results: hide
+acs_md <- getCensus(name = "acs/acs5",
+                    vintage = 2020, 
+                    vars = c("NAME", 
+                             "B01001_001E", 
+                             "B06002_001E", 
+                             "B19013_001E", 
+                             "B19301_001E"), 
+                    region = "place:*", 
+                    regionin = "state:24",
+                    key = cs_key)
+head(acs_md)
+```
+
+Convert values that represent missings to NAs.
+
+```{r}
+#| echo: false
+#| results: hide
+acs_md[acs_md == -666666666] <- NA
+```
+
+Now, it might be useful to rename the socio-demographic variables (`B01001_001E` etc.) in our data set and assign more meaningful names.
+
+```{r}
+acs_md <-
+  acs_md %>%
+  rename(pop = B01001_001E, 
+         age = B06002_001E, 
+         hh_income = B19013_001E, 
+         income = B19301_001E)
+```
+
+It seems like we could try to use this location information listed above to merge this data set with the Google Trends data. However, we first have to clean `NAME` so that it has the same structure as `location` in the search interest by city data.
+
+Add a new variable `location` to the ACS data that only includes city names, without the suffix (village, city, town, or CDP)
+
+```{r}
+no_village <- gsub(' village, Maryland', '', acs_md$NAME)
+no_city <- gsub(' city, Maryland', '', no_village)
+no_town <- gsub(' town, Maryland', '', no_city)
+no_CDP <- gsub(' CDP, Maryland', '', no_town)
+
+acs_with_location <- acs_md %>% 
+  mutate(location = no_CDP)
+
+acs_with_location
+```
+
+The following questions are answered with the Maryland "cdc" and "tiktok" Google trends data and the ACS data.
+
+-   First, check how many cities don't appear in both data sets, i.e. cannot be matched.
+
+```{r}
+locations_only_in_acs <- setdiff(acs_with_location$location, res_city_w$location)
+locations_only_in_res <- setdiff(res_city_w$location, acs_with_location$location)
+
+count_locations_acs <- length(locations_only_in_acs)
+count_locations_res <- length(locations_only_in_res)
+
+cat("Locations unique to acs:", count_locations_acs, "\n")
+cat("Locations unique to res:", count_locations_res, "\n")
+```
+
+-   Then, create a new data set by joining the Google Trends and the ACS data. Keep only cities that appear in both data sets.
+
+```{r}
+
+res_join <- left_join(acs_with_location, res_city_w, by = "location")
+res_join <- na.omit(res_join)
+```
+
+Inspect the result.
+
+```{r}
+
+res_join
+```
+
+-   Compute the mean of the search popularity for both keywords for cities that have an above average median household income and for those that have a below average median household income. When building your pipe, start with creating the grouping variable and then proceed with the remaining tasks. What conclusions might you draw from this?
+
+```{r}
+
+#Calculate median household income
+median_hh_income <- median(res_join$hh_income)
+
+#Group by above or below median household income and calculate mean for each keyword
+res_join %>%
+  mutate(hh_income_above_median = hh_income > median_hh_income) %>%
+  group_by(hh_income_above_median) %>%
+  summarise(mean_cdc = mean(cdc, na.rm = T), 
+            mean_tiktok = mean(tiktok, na.rm = T))
+
+```
+
+Answer: The number of searches for "tiktok" is essentially the same across cities where average household income is below the state median and cities where average household income is above the state median. However, the average number of searches for "cdc" in the richer cities (with household income above the median) is nearly double that of the average number of searches for "cdc" in the poorer cities (with household income below the median). Together, these results suggest that Maryland residents' interest in tiktok was similar across income groups, but interest in the CDC was higher among people in richer neighborhoods than in poorer neighborhoods.
+
+-   Is there a relationship between the median household income and the search popularity of the Google trends terms? Describe the relationship and use a scatterplot with `qplot()`.
+
+Calculate correlation between household income and search popularity of the google trends terms
+
+```{r}
+
+cor_income_cdc <- cor.test(res_join$hh_income, res_join$cdc)
+cor_income_tiktok <- cor.test(res_join$hh_income, res_join$tiktok)
+
+cor_income_cdc
+cor_income_tiktok
+```
+
+Answer: There is a significant positive relationship (p \< .001, t = 6.39, CI: .28, .51) between a city's average household income and searches for cdc. There is no significant relationship (p = .67, t = -.42, CI: -.16, .10) between a city's average household income and searches for tiktok.
+
+Household income and searches for cdc
+
+```{r}
+#| echo: true 
+res_join %>%
+  qplot(x = hh_income, y = cdc, data = ., 
+        geom = "point")
+```
+
+Household income and searches for tiktok
+
+```{r}
+#| echo: true
+res_join %>%
+  qplot(x = hh_income, y = tiktok, data = ., 
+        geom = "point")
+```
+
+\~ The End \~

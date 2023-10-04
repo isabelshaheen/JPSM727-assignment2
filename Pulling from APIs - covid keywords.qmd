@@ -5,7 +5,7 @@ format: pdf
 editor: visual
 ---
 
-### LINK to GITHUB REPO
+### Link to github repo: <https://github.com/isabelshaheen/JPSM727-assignment2.git> 
 
 ```{r}
 #| message = FALSE
@@ -14,7 +14,7 @@ library(gtrendsR)
 library(censusapi)
 ```
 
-## Pulling from APIs
+## Pulling from APIs - Covid Keywords 
 
 Our first data source is the Google Trends API. Suppose we are interested in the search trends for `CDC` and `Tiktok` in Maryland in the years 2019-2023. We could find this using the following code:
 

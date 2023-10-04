@@ -1,0 +1,151 @@
+---
+title: "Google Trends crime & loans + Illinois ACS"
+format: html
+editor: visual
+---
+
+### Link to github repo: <https://github.com/isabelshaheen/JPSM727-assignment2.git> 
+
+## Google Trends (Crime & Loans) + Illinois ACS
+
+Now lets add another data set. The `censusapi` package provides a nice R interface for communicating with this API. However, before running queries we need an access key. This (easy) process can be completed here:
+
+<https://api.census.gov/data/key_signup.html>
+
+Once you have an access key, store this key in the `cs_key` object. We will use this object in all following API queries.
+
+```{r}
+#| eval: false
+cs_key <- "410ea52de7d0c298684fa54e92f6118f47a4aec9"
+```
+
+In the following, we request basic socio-demographic information (population, median age, median household income, income per capita) **for cities and villages in the state of Illinois.**
+
+```{r}
+
+acs_il <- getCensus(name = "acs/acs5",
+                    vintage = 2020, 
+                    vars = c("NAME", 
+                             "B01001_001E", 
+                             "B06002_001E", 
+                             "B19013_001E", 
+                             "B19301_001E"), 
+                    region = "place:*", 
+                    regionin = "state:17",
+                    key = cs_key)
+head(acs_il)
+```
+
+Convert values that represent missings to NAs.
+
+```{r}
+
+acs_il[acs_il == -666666666] <- NA
+```
+
+Now, it might be useful to rename the socio-demographic variables (`B01001_001E` etc.) in our data set and assign more meaningful names.
+
+```{r}
+acs_il <-
+  acs_il %>%
+  rename(pop = B01001_001E, 
+         age = B06002_001E, 
+         hh_income = B19013_001E, 
+         income = B19301_001E)
+```
+
+It seems like we could try to use this location information listed above to merge this data set with the Google Trends data. However, we first have to clean `NAME` so that it has the same structure as `location` in the search interest by city data.
+
+Add a new variable `location` to the ACS data that only includes city names.
+
+```{r}
+no_village <- gsub(' village, Illinois', '', acs_il$NAME)
+no_city <- gsub(' city, Illinois', '', no_village)
+
+acs_with_location <- acs_il %>% 
+  mutate(location = no_city)
+
+acs_with_location %>% head(5)
+```
+
+Answer the following questions with the "crime" and "loans" Google trends data and the ACS data.
+
+-   First, check how many cities don't appear in both data sets, i.e. cannot be matched.
+
+```{r}
+locations_only_in_acs <- setdiff(acs_with_location$location, res_city_w$location)
+locations_only_in_res <- setdiff(res_city_w$location, acs_with_location$location)
+
+count_locations_acs <- length(locations_only_in_acs)
+count_locations_res <- length(locations_only_in_res)
+
+cat("Locations unique to acs:", count_locations_acs, "\n")
+cat("Locations unique to res:", count_locations_res, "\n")
+```
+
+-   Then, create a new data set by joining the Google Trends and the ACS data. Keep only cities that appear in both data sets.
+
+```{r}
+
+res_join <- left_join(acs_with_location, res_city_w, by = "location")
+res_join <- na.omit(res_join)
+```
+
+Inspect the result.
+
+```{r}
+
+res_join
+```
+
+-   Compute the mean of the search popularity for both keywords for cities that have an above average median household income and for those that have a below average median household income. When building your pipe, start with creating the grouping variable and then proceed with the remaining tasks. What conclusions might you draw from this?
+
+```{r}
+
+#Calculate median household income
+median_hh_income <- median(res_join$hh_income)
+
+#Group by above or below median household income and calculate mean for each keyword
+res_join %>%
+  mutate(hh_income_above_median = hh_income > median_hh_income) %>%
+  group_by(hh_income_above_median) %>%
+  summarise(mean_crime = mean(crime, na.rm = T), 
+            mean_loans = mean(loans, na.rm = T))
+
+```
+
+Answer: For the cities with average household income below the state's median, the search term "loans" is twice as popular as the search term "crime." (21 v. 10) For cities with average household income above the state's median, the search terms "crime" and "loans" are equally as popular (both are 15).
+
+-   Is there a relationship between the median household income and the search popularity of the Google trends terms? Describe the relationship and use a scatterplot with `qplot()`.
+
+Calculate correlation between household income and search popularity of the google trends terms
+
+```{r}
+
+cor_income_crime <- cor.test(res_join$hh_income, res_join$crime)
+
+cor_income_loans <- cor.test(res_join$hh_income, res_join$loans)
+
+cor_income_crime
+cor_income_loans
+```
+
+Answer: There is a significant positive relationship between a city's household income and searches for crime. There is a significant negative relationship between a city's household income and searches for loans.
+
+Plot household income and searches for loans
+
+```{r}
+
+res_join %>%
+  qplot(x = hh_income, y = loans, data = ., 
+        geom = "point")
+```
+
+Plot household income and searches for crime
+
+```{r}
+
+res_join %>%
+  qplot(x = hh_income, y = crime, data = ., 
+        geom = "point")
+```
